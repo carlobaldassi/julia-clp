@@ -9,7 +9,7 @@ _jl_libClp = dlopen("libClp")
 macro clp_ccall(func, args...)
     f = "Clp_$(func)"
     quote
-        ccall(dlsym(_jl_libClp, $f), $args...)
+        ccall(dlsym(_jl_libClp, $f), $(args...))
     end
 end
 
