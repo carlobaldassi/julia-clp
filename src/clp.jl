@@ -265,7 +265,7 @@ function clp_primal_tolerance(clp_model::ClpModel)
 end
 
 # Set primal tolerance to use.
-function clp_set_primal_tolerance(clp_model::ClpModel, value::Float64) 
+function clp_set_primal_tolerance(clp_model::ClpModel, value::Float64)
     _jl_clp__check_clp_model(clp_model)
     @clp_ccall setPrimalTolerance Void (Ptr{Void}, Float64) clp_model.p value
     return
@@ -278,7 +278,7 @@ function clp_dual_tolerance(clp_model::ClpModel)
 end
 
 # Set dual tolerance to use.
-function clp_set_dual_tolerance(clp_model::ClpModel, value::Float64) 
+function clp_set_dual_tolerance(clp_model::ClpModel, value::Float64)
     _jl_clp__check_clp_model(clp_model)
     @clp_ccall setDualTolerance Void (Ptr{Void}, Float64) clp_model.p value
     return
