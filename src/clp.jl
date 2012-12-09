@@ -2,14 +2,16 @@
 ### COIN-OR Clp API Wrapper
 ###
 
+import Base.pointer
+
 ## Shared library interface setup
 #{{{
-_jl_libClp = dlopen("libClp")
+_jl_libClp = "libClp"
 
 macro clp_ccall(func, args...)
     f = "Clp_$(func)"
     quote
-        ccall(dlsym(_jl_libClp, $f), $(args...))
+        ccall(($f,_jl_libClp), $(args...))
     end
 end
 
@@ -105,14 +107,27 @@ end
 # Just like the other load_problem() method except that the matrix is
 # given in a standard column major ordered format (without gaps).
 function clp_load_problem (clp_model::ClpModel,  num_cols::Integer, num_rows::Integer,
-        start::Vector{CoinBigIndex}, index::Vector{Int},
+        start::Vector{CoinBigIndex}, index::Vector{Int32},
         value::Vector{Float64},
         col_lb::Vector{Float64}, col_ub::Vector{Float64},
         obj::Vector{Float64},
         row_lb::Vector{Float64}, row_ub::Vector{Float64})
-    # todo
-    error("todo")
+    _jl_clp__check_clp_model(clp_model)
+    # TODO: allow empty arguments according to documentation
+    @clp_ccall loadProblem Void (Ptr{Void},Int32,Int32,Ptr{CoinBigIndex},Ptr{Int32},
+    Ptr{Float64},Ptr{Float64},Ptr{Float64},Ptr{Float64},Ptr{Float64},Ptr{Float64}) clp_model.p num_cols num_rows start index value col_lb col_ub obj row_lb row_ub
     return
+end
+
+function clp_load_problem (clp_model::ClpModel,  constraint_matrix::SparseMatrixCSC{Float64,Int32}, 
+    col_lb::Vector{Float64}, col_ub::Vector{Float64}, 
+    obj::Vector{Float64}, row_lb::Vector{Float64},
+    row_ub::Vector{Float64})
+    # We need to convert to zero-based, but
+    # TODO: don't make extra copies of arrays
+    clp_load_problem(clp_model,constraint_matrix.n, constraint_matrix.m,constraint_matrix.colptr-int32(1),
+        constraint_matrix.rowval-int32(1),constraint_matrix.nzval,
+        col_lb,col_ub,obj,row_lb,row_ub)
 end
 
 # Read quadratic part of the objective (the matrix part).
@@ -129,7 +144,7 @@ function clp_read_mps(clp_model::ClpModel, mpsfile::String, keep_names::Bool, ig
     _jl_clp__check_clp_model(clp_model)
     _jl_clp__check_file_is_readable(mpsfile)
 
-    status = @clp_ccall readMps Int32 (Ptr{Void}, Ptr{Uint8}, Int32, Int32) clp_model.p cstring(mpsfile) keep_names ignore_errors
+    status = @clp_ccall readMps Int32 (Ptr{Void}, Ptr{Uint8}, Int32, Int32) clp_model.p bytestring(mpsfile) keep_names ignore_errors
     if status != 0
         error("clp_read_mps: error reading file $mpsfile")
     end
@@ -167,13 +182,13 @@ end
 clp_delete_rows(clp_model::ClpModel, which::Vector{Int32}) = clp_delete_rows(clp_model, length(which), which)
 
 # Add rows.
-function clp_add_rows(clp_model::ClpModel, number::Int32, row_lower::Vector{Float64},
+function clp_add_rows(clp_model::ClpModel, number::Integer, row_lower::Vector{Float64},
         row_upper::Vector{Float64},
         row_starts::Vector{Int32}, columns::Vector{Int32},
         elements::Vector{Float64})
-    # TODO
-    error("TODO")
-    return
+    _jl_clp__check_clp_model(clp_model)
+
+    @clp_ccall addRows Void (Ptr{Void}, Int32, Ptr{Float64}, Ptr{Float64}, Ptr{Int32}, Ptr{Int32}, Ptr{Float64}) clp_model.p number row_lower row_upper row_starts columns elements
 end
 
 # Delete columns.
@@ -184,28 +199,38 @@ function clp_delete_columns(clp_model::ClpModel, number::Int32, which::Vector{In
 end
 
 # Add columns.
-function clp_add_columns(clp_model::ClpModel, number::Int32, column_lower::Vector{Float64},
+function clp_add_columns(clp_model::ClpModel, number::Integer, column_lower::Vector{Float64},
         column_upper::Vector{Float64},
         objective::Vector{Float64},
         column_starts::Vector{Int32}, rows::Vector{Int32},
         elements::Vector{Float64})
-    # TODO
-    error("TODO")
-    return
+    _jl_clp__check_clp_model(clp_model)
+
+    @clp_ccall addColumns Void (Ptr{Void}, Int32, Ptr{Float64}, Ptr{Float64}, Ptr{Float64}, Ptr{Int32}, Ptr{Int32}, Ptr{Float64}) clp_model.p number column_lower column_upper objective column_starts rows elements
+    
 end
+
+function clp_add_columns(clp_model::ClpModel, column_lower::Vector{Float64},
+        column_upper::Vector{Float64},
+        objective::Vector{Float64},
+        new_columns::SparseMatrixCSC{Float64,Int32})
+
+    clp_add_columns(clp_model, new_columns.n, column_lower, column_upper, objective, new_columns.colptr-int32(1), new_columns.rowval-int32(1), new_columns.nzval)
+end
+
 
 # Change row lower bounds.
 function clp_chg_row_lower(clp_model::ClpModel, row_lower::Vector{Float64})
-    # TODO
-    error("TODO")
-    return
+    _jl_clp__check_clp_model(clp_model)
+    
+    @clp_ccall chgRowLower Void (Ptr{Void}, Ptr{Float64}) clp_model.p row_lower
 end
 
 # Change row upper bounds.
 function clp_chg_row_upper(clp_model::ClpModel, row_upper::Vector{Float64})
-    # TODO
-    error("TODO")
-    return
+    _jl_clp__check_clp_model(clp_model)
+    
+    @clp_ccall chgRowUpper Void (Ptr{Void}, Ptr{Float64}) clp_model.p row_upper
 end
 
 # Change column lower bounds.
@@ -456,7 +481,7 @@ function clp_get_row_price(clp_model::ClpModel)
     ccall(:memcpy, Ptr{Void}, (Ptr{Float64}, Ptr{Float64}, Uint), pointer(row_price), row_price_p, num_rows * sizeof(Float64))
     return row_price
 end
-clp_dual_column_solution = clp_get_row_price
+clp_dual_row_solution = clp_get_row_price
 
 # Get dual column solution (i.e. the reduced costs).
 function clp_get_reduced_cost(clp_model::ClpModel)
@@ -531,24 +556,38 @@ function clp_getNumElements(clp_model::ClpModel)
 end
 
 # Get column starts in matrix.
-# XXX TODO check the size is actually num_cols
 function clp_get_vector_starts(clp_model::ClpModel)
     _jl_clp__check_clp_model(clp_model)
     vec_starts_p = @clp_ccall getVectorStarts Ptr{CoinBigIndex} (Ptr{Void},) clp_model.p
     num_cols = @clp_ccall getNumCols Int32 (Ptr{Void},) clp_model.p
-    vec_starts = Array(CoinBigIndex, num_cols)
-    ccall(:memcpy, Ptr{Void}, (Ptr{CoinBigIndex}, Ptr{CoinBigIndex}, Uint), pointer(vec_starts), vec_starts_p, num_cols * sizeof(CoinBigIndex))
+    vec_starts = Array(CoinBigIndex, num_cols+1)
+    ccall(:memcpy, Ptr{Void}, (Ptr{CoinBigIndex}, Ptr{CoinBigIndex}, Uint), pointer(vec_starts), vec_starts_p, (num_cols+1) * sizeof(CoinBigIndex))
     return vec_starts
 end
 
 # Get row indices in matrix.
 function clp_get_indices(clp_model::ClpModel)
     _jl_clp__check_clp_model(clp_model)
+    # getIndices returns an "int*", how do we know it's Int32??
     row_indices_p = @clp_ccall getIndices Ptr{Int32} (Ptr{Void},) clp_model.p
-    num_rows = @clp_ccall getNumRows Int32 (Ptr{Void},) clp_model.p
-    row_indices = Array(Int32, num_rows)
-    ccall(:memcpy, Ptr{Void}, (Ptr{Int32}, Ptr{Int32}, Uint), pointer(row_indices), row_indices_p, num_rows * sizeof(Int32))
+    num_elts = clp_getNumElements(clp_model)
+    row_indices = Array(Int32, num_elts)
+    ccall(:memcpy, Ptr{Void}, (Ptr{Int32}, Ptr{Int32}, Uint), pointer(row_indices), row_indices_p, num_elts * sizeof(Int32))
     return row_indices
+end
+
+function clp_get_constraint_matrix(clp_model::ClpModel)
+    _jl_clp__check_clp_model(clp_model)
+    @assert CoinBigIndex == Int32
+    # SparseMatrixCSC requires same integer type for colptr and rowval
+    num_cols = convert(Int,clp_get_num_cols(clp_model))
+    num_rows = convert(Int,clp_get_num_rows(clp_model))
+    colptr = clp_get_vector_starts(clp_model) + int32(1)
+    rowval = clp_get_indices(clp_model) + convert(CoinBigIndex,1)
+    nzval = clp_get_elements(clp_model)
+
+    return SparseMatrixCSC{Float64,CoinBigIndex}(num_rows,num_cols,colptr,rowval,nzval)
+
 end
 
 # Get column vector lengths in matrix.
@@ -563,9 +602,12 @@ end
 
 # Get element values in matrix.
 function clp_get_elements(clp_model::ClpModel)
-    # TODO
-    error("TODO")
-    return # Array of Float64 values
+    _jl_clp__check_clp_model(clp_model)
+    elements_p = @clp_ccall getElements Ptr{Float64} (Ptr{Void},) clp_model.p
+    num_elts = clp_getNumElements(clp_model)
+    elements = Array(Float64, num_elts)
+    ccall(:memcpy, Ptr{Void}, (Ptr{Int32}, Ptr{Int32}, Uint), pointer(elements), elements_p, num_elts * sizeof(Float64))
+    return elements
 end
 
 # Get objective value.
@@ -630,31 +672,28 @@ function clp_copyin_status(clp_model::ClpModel, status_array::Vector{Uint8})
 end
 
 # Get variable basis info.
-function clp_get_column_status(clp_model::ClpModel, sequence::Int32)
-    # TODO
-    error("TODO")
-    return # integer
+# Note that we adjust from one-based indices
+function clp_get_column_status(clp_model::ClpModel, sequence::Integer)
+    _jl_clp__check_clp_model(clp_model)
+    return @clp_ccall getColumnStatus Int32 (Ptr{Void},Int32) clp_model.p (sequence-1)
 end
 
 # Get row basis info.
-function clp_get_row_status(clp_model::ClpModel, sequence::Int32)
-    # TODO
-    error("TODO")
-    return # integer
+function clp_get_row_status(clp_model::ClpModel, sequence::Integer)
+    _jl_clp__check_clp_model(clp_model)
+    return @clp_ccall getRowStatus Int32 (Ptr{Void},Int32) clp_model.p (sequence-1)
 end
 
 # Set variable basis info (and value if at bound).
-function clp_set_column_status(clp_model::ClpModel, sequence::Int32, value::Int32)
-    # TODO
-    error("TODO")
-    return
+function clp_set_column_status(clp_model::ClpModel, sequence::Integer, value::Integer)
+    _jl_clp__check_clp_model(clp_model)
+    @clp_ccall setColumnStatus Int32 (Ptr{Void},Int32,Int32) clp_model.p (sequence-1) value
 end
 
 # Set row basis info (and value if at bound).
-function clp_set_row_status(clp_model::ClpModel, sequence::Int32, value::Int32)
-    # TODO
-    error("TODO")
-    return
+function clp_set_row_status(clp_model::ClpModel, sequence::Integer, value::Integer)
+    _jl_clp__check_clp_model(clp_model)
+    @clp_ccall setRowStatus Int32 (Ptr{Void},Int32,Int32) clp_model.p (sequence-1) value
 end
 
 # Set user pointer (used for generic purposes)
@@ -717,9 +756,9 @@ function clp_row_name(clp_model::ClpModel, row::Integer)
     _jl_clp__check_clp_model(clp_model)
     _jl_clp__check_row_is_valid(clp_model, row)
     size = @clp_ccall lengthNames Int32 (Ptr{Void},) clp_model.p
-    row_name_p = pointer(Array(Uint8, size))
+    row_name_p = pointer(Array(Uint8, size+1))
     @clp_ccall rowName Void (Ptr{Void}, Int32, Ptr{Uint8}) clp_model.p (row-1) row_name_p
-    row_name = string(row_name_p)
+    row_name = bytestring(row_name_p)
     return row_name
 end
 
@@ -731,9 +770,9 @@ function clp_column_name(clp_model::ClpModel, col::Integer)
     _jl_clp__check_clp_model(clp_model)
     _jl_clp__check_col_is_valid(clp_model, col)
     size = @clp_ccall lengthNames Int32 (Ptr{Void},) clp_model.p
-    col_name_p = pointer(Array(Uint8, size))
+    col_name_p = pointer(Array(Uint8,size+1))
     @clp_ccall columnName Void (Ptr{Void}, Int32, Ptr{Uint8}) clp_model.p (col-1) col_name_p
-    col_name = string(col_name_p)
+    col_name = bytestring(col_name_p)
     return col_name
 end
 
