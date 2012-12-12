@@ -6,7 +6,7 @@ import Base.pointer
 
 ## Shared library interface setup
 #{{{
-_jl_libClp = "libClp"
+const _jl_libClp = "libClp"
 
 macro clp_ccall(func, args...)
     f = "Clp_$(func)"
