@@ -235,16 +235,16 @@ end
 
 # Change column lower bounds.
 function clp_chg_column_lower(clp_model::ClpModel, column_lower::Vector{Float64})
-    # TODO
-    error("TODO")
-    return
+    _jl_clp__check_clp_model(clp_model)
+
+    @clp_ccall chgColumnLower Void (Ptr{Void}, Ptr{Float64}) clp_model.p column_lower 
 end
 
 # Change column upper bounds.
 function clp_chg_column_upper(clp_model::ClpModel, column_upper::Vector{Float64})
-    # TODO
-    error("TODO")
-    return
+    _jl_clp__check_clp_model(clp_model)
+    
+    @clp_ccall chgColumnUpper Void (Ptr{Void}, Ptr{Float64}) clp_model.p column_upper 
 end
 
 # Change objective coefficients.
