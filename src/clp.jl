@@ -60,6 +60,7 @@ export
     get_row_activity,
     get_col_solution,
     primal_column_solution,
+    set_col_solution,
     primal_row_solution,
     get_row_price,
     dual_row_solution,
@@ -75,11 +76,11 @@ export
     column_lower,
     get_col_upper,
     column_upper,
-    getNumElements,
+    get_num_elements,
     get_vector_starts,
     get_indices,
     get_constraint_matrix,
-    getVectorLengths,
+    get_vector_lengths,
     get_elements,
     get_obj_value,
     objective_value,
@@ -93,8 +94,7 @@ export
     get_row_status,
     set_column_status,
     set_row_status,
-    get_user_pointer,
-    set_user_pointer,
+    register_call_back,
     clear_call_back,
     log_level,
     set_log_level,
@@ -137,7 +137,10 @@ export
     is_dual_objective_limit_reached,
     is_iteration_limit_reached,
     get_obj_sense,
-    set_obj_sense
+    set_obj_sense,
+    print_model,
+    get_small_element_value,
+    set_small_element_value
 
 import Base.pointer
 
@@ -271,10 +274,14 @@ end
 # Read quadratic part of the objective (the matrix part).
 function load_quadratic_objective(model::ClpModel,
         num_cols::Integer, start::Vector{CoinBigIndex},
-        col::Int, element::Float64)
-    # TODO
-    error("TODO")
-    return
+        col::Vector{Int32}, element::Vector{Float64})
+    _jl__check_model(model)
+    @clp_ccall loadQuadraticObjective Void (Ptr{Void},Int32,Ptr{CoinBigIndex},Ptr{Int32},Ptr{Float64}) model.p num_cols start column element
+end
+
+function load_quadratic_objective(model::ClpModel,
+    hessian_matrix::SparseMatrixCSC{Float64,Int32})
+    load_quadratic_objective(model, hessian_matrix.n, hessian_matrix.colptr-int32(1), hessian_matrix.rowval-int32(1),hessian_matrix.nzval)
 end
 
 # Read an mps file from the given filename.
@@ -292,32 +299,30 @@ read_mps(model::ClpModel, mpsfile::String) = read_mps(model, mpsfile, true, fals
 
 # Copy in integer information.
 function copy_in_integer_information(model::ClpModel, information::Vector{Uint8})
-    # TODO
-    error("TODO")
-    return
+    _jl__check_model(model)
+    if length(information) != num_cols(model)
+        error("Length of integer information must match number of columns")
+    end
+    @clp_ccall copyInIntegerInformation Void (Ptr{Void},Ptr{Uint8}) model.p information
 end
 
 # Drop integer information.
 function delete_integer_information(model::ClpModel)
-    # TODO
-    error("TODO")
-    return
+    _jl__check_model(model)
+    @clp_ccall deleteIntegerInformation Void (Ptr{Void},) model.p
 end
 
 # Resize rim part of model.
-function resize (model::ClpModel, new_num_rows::Int32, new_num_cols::Int32)
-    # TODO
-    error("TODO")
-    return
+function resize (model::ClpModel, new_num_rows::Integer, new_num_cols::Integer)
+    _jl__check_model(model)
+    @clp_ccall resize Void (Ptr{Void},Int32,Int32) model.p new_num_rows new_num_cols
 end
 
 # Delete rows.
-function delete_rows(model::ClpModel, number::Int32, which::Vector{Int32})
-    # TODO
-    error("TODO")
-    return
+function delete_rows(model::ClpModel, which::Vector{Int32})
+    _jl__check_model(model)
+    @clp_ccall deleteRows Void (Ptr{Void},Int32,Ptr{Int32}) model.p length(which) which
 end
-delete_rows(model::ClpModel, which::Vector{Int32}) = delete_rows(model, length(which), which)
 
 # Add rows.
 function add_rows(model::ClpModel, number::Integer, row_lower::Vector{Float64},
@@ -330,10 +335,9 @@ function add_rows(model::ClpModel, number::Integer, row_lower::Vector{Float64},
 end
 
 # Delete columns.
-function delete_columns(model::ClpModel, number::Int32, which::Vector{Int32})
-    # TODO
-    error("TODO")
-    return
+function delete_columns(model::ClpModel, which::Vector{Int32})
+    _jl__check_model(model)
+    @clp_ccall deleteColumns Void (Ptr{Void},Int32,Ptr{Int32}) model.p length(which) which
 end
 
 # Add columns.
@@ -360,7 +364,7 @@ end
 # Change row lower bounds.
 function chg_row_lower(model::ClpModel, row_lower::Vector{Float64})
     _jl__check_model(model)
-    if (length(row_lower) != get_num_rows(model))
+    if length(row_lower) != get_num_rows(model)
         error("Array length must match number of rows in the model")
     end
 
@@ -370,7 +374,7 @@ end
 # Change row upper bounds.
 function chg_row_upper(model::ClpModel, row_upper::Vector{Float64})
     _jl__check_model(model)
-    if (length(row_upper) != get_num_rows(model))
+    if length(row_upper) != get_num_rows(model)
         error("Array length must match number of rows in the model")
     end
     
@@ -380,7 +384,7 @@ end
 # Change column lower bounds.
 function chg_column_lower(model::ClpModel, column_lower::Vector{Float64})
     _jl__check_model(model)
-    if (length(column_lower) != get_num_cols(model))
+    if length(column_lower) != get_num_cols(model)
         error("Array length must match number of columns in the model")
     end
 
@@ -390,7 +394,7 @@ end
 # Change column upper bounds.
 function chg_column_upper(model::ClpModel, column_upper::Vector{Float64})
     _jl__check_model(model)
-    if (length(column_lower) != get_num_cols(model))
+    if length(column_lower) != get_num_cols(model)
         error("Array length must match number of columns in the model")
     end
 
@@ -399,19 +403,23 @@ end
 
 # Change objective coefficients.
 function chg_obj_coefficients(model::ClpModel, obj_in::Vector{Float64})
-    # TODO
-    error("TODO")
-    return
+    _jl__check_model(model)
+    if length(obj_in) != get_num_cols(model)
+        error("Array length must match number of columns in the model")
+    end
+    
+    @clp_ccall chgObjCoefficients Void (Ptr{Void},Ptr{Float64}) model.p obj_in
 end
 
 # Drops names - makes lengthnames 0 and names empty.
 function drop_names(model::ClpModel)
-    # TODO
-    error("TODO")
-    return
+    _jl__check_model(model)
+
+    @clp_ccall dropNames Void (Ptr{Void},) model.p
 end
 
 # Copy in names.
+# TODO: Need a nice way to accept a vector of Strings
 function copy_names(model::ClpModel, row_names::Vector{Vector{Uint8}},
         columnNames::Vector{Vector{Uint8}})
     # TODO
@@ -422,14 +430,14 @@ end
 # Number of rows.
 function get_num_rows(model::ClpModel)
     _jl__check_model(model)
-    num_rows = @clp_ccall getNumRows Int32 (Ptr{Void},) model.p
+    @clp_ccall getNumRows Int32 (Ptr{Void},) model.p
 end
 number_rows = get_num_rows
 
 # Number of columns.
 function get_num_cols(model::ClpModel)
     _jl__check_model(model)
-    num_cols = @clp_ccall getNumCols Int32 (Ptr{Void},) model.p
+    @clp_ccall getNumCols Int32 (Ptr{Void},) model.p
 end
 number_cols = get_num_cols
 
@@ -488,16 +496,15 @@ function problem_name(model::ClpModel)
     _jl__check_model(model)
     problem_name_p = pointer(Array(Uint8, 1000))
     @clp_ccall problemName Void (Ptr{Void}, Int32, Ptr{Uint8}) model.p 1000 problem_name_p
-    return string(problem_name_p)
+    return bytestring(problem_name_p)
 end
 
 # Set problem name.  Must have \0 at end.
-function set_problem_name(model::ClpModel, max_number_chars::Int32, array::Vector{Uint8})
-    # TODO
-    error("TODO")
-    return intvalue
+function set_problem_name(model::ClpModel, name::ASCIIString)
+    _jl__check_model(model)
+    
+    @clp_ccall setProblemName Void (Ptr{Void}, Int32, Ptr{Uint8}) model.p (length(name)+1) bytestring(name)
 end
-set_problem_name(model::ClpModel, array::Vector{Uint8}) = set_problem_name(model, length(array)+1, array)
 
 # Get number of iterations
 function number_iterations(model::ClpModel)
@@ -600,107 +607,74 @@ function set_optimization_direction(model::ClpModel, value::Real)
     return
 end
 
-# Get primal row solution.
-function get_row_activity(model::ClpModel)
-    _jl__check_model(model)
-    row_activity_p = @clp_ccall getRowActivity Ptr{Float64} (Ptr{Void},) model.p
-    num_rows = @clp_ccall getNumRows Int32 (Ptr{Void},) model.p
-    row_activity = Array(Float64, num_rows)
-    ccall(:memcpy, Ptr{Void}, (Ptr{Float64}, Ptr{Float64}, Uint), pointer(row_activity), row_activity_p, num_rows * sizeof(Float64))
-    return row_activity
+# TODO: do we actually want to make a copy of the result?
+# More efficient to not and let the sufficiently warned user do so if desired.
+macro def_get_row_property(fname,clpname)
+    quote
+        function $(esc(fname))(model::ClpModel)
+            _jl__check_model(model)
+            row_property_p = @clp_ccall $clpname Ptr{Float64} (Ptr{Void},) model.p
+            num_rows = int(get_num_rows(model))
+            return copy(pointer_to_array(row_property_p,(num_rows,)))
+        end
+    end
 end
+
+macro def_get_col_property(fname,clpname)
+    quote
+        function $(esc(fname))(model::ClpModel)
+            _jl__check_model(model)
+            col_property_p = @clp_ccall $clpname Ptr{Float64} (Ptr{Void},) model.p
+            num_cols = int(get_num_cols(model))
+            return copy(pointer_to_array(col_property_p,(num_cols,)))
+        end
+    end
+end
+
+# Get primal row solution.
+@def_get_row_property get_row_activity getRowActivity
+
 primal_row_solution = get_row_activity
 
 # Get primal column solution.
-function get_col_solution(model::ClpModel)
-    _jl__check_model(model)
-    col_solution_p = @clp_ccall getColSolution Ptr{Float64} (Ptr{Void},) model.p
-    num_cols = @clp_ccall getNumCols Int32 (Ptr{Void},) model.p
-    col_solution = Array(Float64, num_cols)
-    ccall(:memcpy, Ptr{Void}, (Ptr{Float64}, Ptr{Float64}, Uint), pointer(col_solution), col_solution_p, num_cols * sizeof(Float64))
-    return col_solution
-end
+@def_get_col_property get_col_solution getColSolution
 primal_column_solution = get_col_solution
 
-# Get dual row solution.
-function get_row_price(model::ClpModel)
+function set_col_solution(model::ClpModel, input::Vector{Float64})
     _jl__check_model(model)
-    row_price_p = @clp_ccall getRowPrice Ptr{Float64} (Ptr{Void},) model.p
-    num_rows = @clp_ccall getNumRows Int32 (Ptr{Void},) model.p
-    row_price = Array(Float64, num_rows)
-    ccall(:memcpy, Ptr{Void}, (Ptr{Float64}, Ptr{Float64}, Uint), pointer(row_price), row_price_p, num_rows * sizeof(Float64))
-    return row_price
+
+    @clp_ccall setColSolution Void (Ptr{Void},Ptr{Float64}) model.p input
 end
+
+# Get dual row solution.
+@def_get_row_property get_row_price getRowPrice
 dual_row_solution = get_row_price
 
 # Get dual column solution (i.e. the reduced costs).
-function get_reduced_cost(model::ClpModel)
-    _jl__check_model(model)
-    reduced_cost_p = @clp_ccall getReducedCost Ptr{Float64} (Ptr{Void},) model.p
-    num_cols = @clp_ccall getNumCols Int32 (Ptr{Void},) model.p
-    reduced_cost = Array(Float64, num_cols)
-    ccall(:memcpy, Ptr{Void}, (Ptr{Float64}, Ptr{Float64}, Uint), pointer(reduced_cost), reduced_cost_p, num_cols * sizeof(Float64))
-    return reduced_cost
-end
+@def_get_col_property get_reduced_cost getReducedCost
 dual_column_solution = get_reduced_cost
 
 # Get row lower bounds.
-function get_row_lower(model::ClpModel)
-    _jl__check_model(model)
-    row_lower_p = @clp_ccall getRowLower Ptr{Float64} (Ptr{Void},) model.p
-    num_rows = @clp_ccall getNumRows Int32 (Ptr{Void},) model.p
-    row_lower = Array(Float64, num_rows)
-    ccall(:memcpy, Ptr{Void}, (Ptr{Float64}, Ptr{Float64}, Uint), pointer(row_lower), row_lower_p, num_rows * sizeof(Float64))
-    return row_lower
-end
+@def_get_row_property get_row_lower getRowLower
 row_lower = get_row_lower
 
 # Get row upper bounds.
-function get_row_upper(model::ClpModel)
-    _jl__check_model(model)
-    row_upper_p = @clp_ccall getRowUpper Ptr{Float64} (Ptr{Void},) model.p
-    num_rows = @clp_ccall getNumRows Int32 (Ptr{Void},) model.p
-    row_upper = Array(Float64, num_rows)
-    ccall(:memcpy, Ptr{Void}, (Ptr{Float64}, Ptr{Float64}, Uint), pointer(row_upper), row_upper_p, num_rows * sizeof(Float64))
-    return row_upper
-end
+@def_get_row_property get_row_upper getRowUpper
 row_upper = get_row_upper
 
-# Get objective coefficients.
-function get_obj_coefficients(model::ClpModel)
-    _jl__check_model(model)
-    obj_coefficients_p = @clp_ccall getObjCoefficients Ptr{Float64} (Ptr{Void},) model.p
-    num_cols = @clp_ccall getNumCols Int32 (Ptr{Void},) model.p
-    obj_coefficients = Array(Float64, num_cols)
-    ccall(:memcpy, Ptr{Void}, (Ptr{Float64}, Ptr{Float64}, Uint), pointer(obj_coefficients), obj_coefficients_p, num_cols * sizeof(Float64))
-    return obj_coefficients
-end
+@def_get_col_property get_obj_coefficients getObjCoefficients
 objective = get_obj_coefficients
 
 # Get column lower bounds.
-function get_col_lower(model::ClpModel)
-    _jl__check_model(model)
-    col_lower_p = @clp_ccall getColLower Ptr{Float64} (Ptr{Void},) model.p
-    num_cols = @clp_ccall getNumCols Int32 (Ptr{Void},) model.p
-    col_lower = Array(Float64, num_cols)
-    ccall(:memcpy, Ptr{Void}, (Ptr{Float64}, Ptr{Float64}, Uint), pointer(col_lower), col_lower_p, num_cols * sizeof(Float64))
-    return col_lower
-end
+@def_get_col_property get_col_lower getColLower
 column_lower = get_col_lower
 
 # Get column upper bounds.
-function get_col_upper(model::ClpModel)
-    _jl__check_model(model)
-    col_upper_p = @clp_ccall getColUpper Ptr{Float64} (Ptr{Void},) model.p
-    num_cols = @clp_ccall getNumCols Int32 (Ptr{Void},) model.p
-    col_upper = Array(Float64, num_cols)
-    ccall(:memcpy, Ptr{Void}, (Ptr{Float64}, Ptr{Float64}, Uint), pointer(col_upper), col_upper_p, num_cols * sizeof(Float64))
-    return col_upper
-end
+@def_get_col_property get_col_upper getColUpper
 column_upper = get_col_upper
 
 # Get the number of elements in matrix.
-function getNumElements(model::ClpModel)
+function get_num_elements(model::ClpModel)
     _jl__check_model(model)
     @clp_ccall getNumElements Int32 (Ptr{Void},) model.p
 end
@@ -709,10 +683,8 @@ end
 function get_vector_starts(model::ClpModel)
     _jl__check_model(model)
     vec_starts_p = @clp_ccall getVectorStarts Ptr{CoinBigIndex} (Ptr{Void},) model.p
-    num_cols = @clp_ccall getNumCols Int32 (Ptr{Void},) model.p
-    vec_starts = Array(CoinBigIndex, num_cols+1)
-    ccall(:memcpy, Ptr{Void}, (Ptr{CoinBigIndex}, Ptr{CoinBigIndex}, Uint), pointer(vec_starts), vec_starts_p, (num_cols+1) * sizeof(CoinBigIndex))
-    return vec_starts
+    num_cols = int(get_num_cols(model))
+    return copy(pointer_to_array(vec_starts_p, (num_cols+1,)))
 end
 
 # Get row indices in matrix.
@@ -720,10 +692,8 @@ function get_indices(model::ClpModel)
     _jl__check_model(model)
     # getIndices returns an "int*", how do we know it's Int32??
     row_indices_p = @clp_ccall getIndices Ptr{Int32} (Ptr{Void},) model.p
-    num_elts = getNumElements(model)
-    row_indices = Array(Int32, num_elts)
-    ccall(:memcpy, Ptr{Void}, (Ptr{Int32}, Ptr{Int32}, Uint), pointer(row_indices), row_indices_p, num_elts * sizeof(Int32))
-    return row_indices
+    num_elts = int(get_num_elements(model))
+    return copy(pointer_to_array(row_indices_p,(num_elts,)))
 end
 
 function get_constraint_matrix(model::ClpModel)
@@ -741,23 +711,14 @@ function get_constraint_matrix(model::ClpModel)
 end
 
 # Get column vector lengths in matrix.
-function getVectorLengths(model::ClpModel)
-    _jl__check_model(model)
-    vec_len_p = @clp_ccall getVectorLengths Ptr{Int32} (Ptr{Void},) model.p
-    num_cols = @clp_ccall getNumCols Int32 (Ptr{Void},) model.p
-    vec_len = Array(Int32, num_cols)
-    ccall(:memcpy, Ptr{Void}, (Ptr{Int32}, Ptr{Int32}, Uint), pointer(vec_len), vec_len_p, num_cols * sizeof(Int32))
-    return vec_len
-end
+@def_get_col_property get_vector_lengths getVectorLengths
 
 # Get element values in matrix.
 function get_elements(model::ClpModel)
     _jl__check_model(model)
     elements_p = @clp_ccall getElements Ptr{Float64} (Ptr{Void},) model.p
-    num_elts = getNumElements(model)
-    elements = Array(Float64, num_elts)
-    ccall(:memcpy, Ptr{Void}, (Ptr{Int32}, Ptr{Int32}, Uint), pointer(elements), elements_p, num_elts * sizeof(Float64))
-    return elements
+    num_elts = int(get_num_elements(model))
+    return copy(pointer_to_array(elements_p,(num_elts,)))
 end
 
 # Get objective value.
@@ -850,25 +811,19 @@ function set_row_status(model::ClpModel, sequence::Integer, value::Integer)
     @clp_ccall setRowStatus Int32 (Ptr{Void},Int32,Int32) model.p (sequence-1) value
 end
 
+# No reason to expose these
 # Set user pointer (used for generic purposes)
-function get_user_pointer(model::ClpModel)
-    # TODO
-    error("TODO")
-    return # Ptr{Void}
-end
-
+#function get_user_pointer(model::ClpModel)
 # Get user pointer (used for generic purposes)
-function set_user_pointer(model::ClpModel, pointer::Ptr{Void})
-    # TODO
-    error("TODO")
-    return
-end
+#function set_user_pointer(model::ClpModel, pointer::Ptr{Void})
 
-# Pass in callback function.
-# Message numbers up to 1000000 are Clp, Coin ones have 1000000 added
-# TODO
-# COINLIBAPI void COINLINKAGE Clp_registerCallBack(Clp_Simplex * model,
-#        callback userCallBack);
+# Pass in c-pointer to callback function. (from cfunction())
+# See Coin_C_defines.h for signature
+# TODO: test this
+function register_call_back(model::ClpModel, callback::Ptr{Void})
+    _jl__check_model(model)
+    @clp_ccall registerCallBack Void (Ptr{Void},Ptr{Void}) model.p callback
+end
 
 # Unset callback function.
 function clear_call_back(model::ClpModel)
@@ -1124,18 +1079,18 @@ end
 # It does not save any messaging information.
 # Does not save scaling values.
 # It does not know about all types of virtual functions.
-function save_model(model::ClpModel, file_name::Vector{Uint8});
-    # todo
-    error("todo")
-    return # Int32 [Bool]
+function save_model(model::ClpModel, file_name::ASCIIString);
+    _jl__check_model(model)
+    
+    @clp_ccall saveModel Int32 (Ptr{Void},Ptr{Uint8}) model.p bytestring(file_name)
 end
 
 # Restore model from file, returns 0 if success,
 # deletes current model.
-function restore_model(model::ClpModel, file_name::Vector{Uint8});
-    # todo
-    error("todo")
-    return # Int32 [Bool]
+function restore_model(model::ClpModel, file_name::ASCIIString)
+    _jl__check_model(model)
+
+    @clp_ccall restoreModel Int32 (Ptr{Void},Ptr{Uint8}) model.p bytestring(file_name)
 end
 
 # Just check solution (for external use) - sets sum of
@@ -1216,19 +1171,24 @@ function set_obj_sense(model::ClpModel, objsen::Real);
     return
 end
 
-#### XXX to be continued...
+# Print model for debugging purposes
+function print_model(model::ClpModel, prefix::ASCIIString)
+    _jl__check_model(model)
 
-# Set primal column solution.
-#COINLIBAPI void COINLINKAGE Clp_setColSolution(Clp_Simplex * model, const double * input);
-# XXX TODO
+    @clp_ccall printModel Void (Ptr{Void},Ptr{Uint8}) model.p bytestring(prefix)
+end
 
-#    /** Print model for debugging purposes */
-#    COINLIBAPI void COINLINKAGE Clp_printModel(Clp_Simplex * model, const char * prefix);
-#    /* Small element value - elements less than this set to zero,
-#       default is 1.0e-20 */
-#    COINLIBAPI double COINLINKAGE Clp_getSmallElementValue(Clp_Simplex * model);
-#    COINLIBAPI void COINLINKAGE Clp_setSmallElementValue(Clp_Simplex * model, double value);
+function get_small_element_value(model::ClpModel)
+    _jl__check_model(model)
 
-#}}}
+    @clp_ccall getSmallElementValue Float64 (Ptr{Void},) model.p
+end
+
+function set_small_element_value(model::ClpModel,value::Float64)
+    _jl__check_model(model)
+
+    @clp_ccall setSmallElementValue Void (Ptr{Void},Float64) model.p value
+end
+
 
 end # module
