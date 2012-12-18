@@ -735,20 +735,34 @@ function integer_information(model::ClpModel)
     return # vector of chars (?)
 end
 
-# Get an infeasibility ray (nothing returned if none/wrong).
+# Get an infeasibility ray (empty vector returned if none/wrong).
 function infeasibility_ray(model::ClpModel)
-    # TODO
-    error("TODO")
-    # XXX free the array returned by the ccall!
-    return # array of Float64 or nothing
+    _jl__check_model(model)
+    infeas_ray_p = @clp_ccall infeasibilityRay Ptr{Float64} (Ptr{Void},) model.p
+    num_rows = int(get_num_rows(model))
+    local infeas_ray::Vector{Float64}
+    if infeas_ray_p != convert(Ptr{Void},0) # better constant for null pointer?
+        infeas_ray = copy(pointer_to_array(infeas_ray_p,(num_rows,)))
+        ccall(:free,Void,(Ptr{Void},),infeas_ray_p)
+    else
+        infeas_ray = Array(Float64,0)
+    end
+    return infeas_ray
 end
 
-# Get an unbounded ray (nothing returned if none/wrong).
+# Get an unbounded ray (empty vector returned if none/wrong).
 function unbounded_ray(model::ClpModel)
-    # TODO
-    error("TODO")
-    # XXX free the array returned by the ccall!
-    return # array of Float64 or nothing
+    _jl__check_model(model)
+    unbd_ray_p = @clp_ccall unboundedRay Ptr{Float64} (Ptr{Void},) model.p
+    num_cols = int(get_num_cols(model))
+    local unbd_ray::Vector{Float64}
+    if unbd_ray_p != convert(Ptr{Void},0) 
+        unbd_ray = copy(pointer_to_array(unbd_ray_p,(num_cols,)))
+        ccall(:free,Void,(Ptr{Void},),unbd_ray_p)
+    else
+        unbd_ray = Array(Float64,0)
+    end
+    return unbd_ray
 end
 
 # Query whether the status array exists (partly for OsiClp).
