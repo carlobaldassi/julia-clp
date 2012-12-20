@@ -815,14 +815,14 @@ end
 function set_column_status(model::ClpModel, sequence::Integer, value::Integer)
     _jl__check_model(model)
     _jl__check_col_is_valid(model, sequence)
-    @clp_ccall setColumnStatus Int32 (Ptr{Void},Int32,Int32) model.p (sequence-1) value
+    @clp_ccall setColumnStatus Void (Ptr{Void},Int32,Int32) model.p (sequence-1) value
 end
 
 # Set row basis info (and value if at bound).
 function set_row_status(model::ClpModel, sequence::Integer, value::Integer)
     _jl__check_model(model)
     _jl__check_row_is_valid(model, sequence)
-    @clp_ccall setRowStatus Int32 (Ptr{Void},Int32,Int32) model.p (sequence-1) value
+    @clp_ccall setRowStatus Void (Ptr{Void},Int32,Int32) model.p (sequence-1) value
 end
 
 # No reason to expose these
