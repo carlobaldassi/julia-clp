@@ -741,7 +741,7 @@ function infeasibility_ray(model::ClpModel)
     infeas_ray_p = @clp_ccall infeasibilityRay Ptr{Float64} (Ptr{Void},) model.p
     num_rows = int(get_num_rows(model))
     local infeas_ray::Vector{Float64}
-    if infeas_ray_p != convert(Ptr{Void},0) # better constant for null pointer?
+    if infeas_ray_p != C_NULL
         infeas_ray = copy(pointer_to_array(infeas_ray_p,(num_rows,)))
         ccall(:free,Void,(Ptr{Void},),infeas_ray_p)
     else
@@ -756,7 +756,7 @@ function unbounded_ray(model::ClpModel)
     unbd_ray_p = @clp_ccall unboundedRay Ptr{Float64} (Ptr{Void},) model.p
     num_cols = int(get_num_cols(model))
     local unbd_ray::Vector{Float64}
-    if unbd_ray_p != convert(Ptr{Void},0) 
+    if unbd_ray_p != C_NULL 
         unbd_ray = copy(pointer_to_array(unbd_ray_p,(num_cols,)))
         ccall(:free,Void,(Ptr{Void},),unbd_ray_p)
     else
