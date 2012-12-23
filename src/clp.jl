@@ -881,8 +881,7 @@ function row_name(model::ClpModel, row::Integer)
     size = @clp_ccall lengthNames Int32 (Ptr{Void},) model.p
     row_name_p = pointer(Array(Uint8, size+1))
     @clp_ccall rowName Void (Ptr{Void}, Int32, Ptr{Uint8}) model.p (row-1) row_name_p
-    row_name = bytestring(row_name_p)
-    return row_name
+    return bytestring(row_name_p)
 end
 
 # Return an array with a column name.
@@ -895,8 +894,7 @@ function column_name(model::ClpModel, col::Integer)
     size = @clp_ccall lengthNames Int32 (Ptr{Void},) model.p
     col_name_p = pointer(Array(Uint8,size+1))
     @clp_ccall columnName Void (Ptr{Void}, Int32, Ptr{Uint8}) model.p (col-1) col_name_p
-    col_name = bytestring(col_name_p)
-    return col_name
+    return bytestring(col_name_p)
 end
 
 # General solve algorithm which can do presolve.
