@@ -928,21 +928,21 @@ function initial_barrier_no_cross_solve(model::ClpModel)
 end
 
 # Dual algorithm.
-function dual(model::ClpModel)
+function dual(model::ClpModel, ifValuesPass::Integer)
     _jl__check_model(model)
-    @clp_ccall dual Int32 (Ptr{Void},) model.p
+    @clp_ccall dual Int32 (Ptr{Void},Int32) model.p ifValuesPass
 end
 
 # Primal algorithm.
-function primal(model::ClpModel)
+function primal(model::ClpModel, ifValuesPass::Integer)
     _jl__check_model(model)
-    @clp_ccall primal Int32 (Ptr{Void},) model.p
+    @clp_ccall primal Int32 (Ptr{Void},Int32) model.p ifValuesPass
 end
 
 # Solve the problem with the idiot code.
-function idiot(model::ClpModel)
+function idiot(model::ClpModel, tryhard::Integer)
     _jl__check_model(model)
-    @clp_ccall idiot Int32 (Ptr{Void},) model.p
+    @clp_ccall idiot Int32 (Ptr{Void},Int32) model.p tryhard
 end
 
 # Set or unset scaling:
