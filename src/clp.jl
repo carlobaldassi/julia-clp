@@ -394,7 +394,7 @@ end
 # Change column upper bounds.
 function chg_column_upper(model::ClpModel, column_upper::Vector{Float64})
     _jl__check_model(model)
-    if length(column_lower) != get_num_cols(model)
+    if length(column_upper) != get_num_cols(model)
         error("Array length must match number of columns in the model")
     end
 
