@@ -10,6 +10,7 @@ export
     CoinBigIndex,
     CoinBigDouble,
     ClpModel,
+    ClpSolve,
 
     # Methods
     load_problem,
@@ -102,6 +103,7 @@ export
     row_name,
     column_name,
     initial_solve,
+    initial_solve_with_options,
     initial_dual_solve,
     initial_primal_solve,
     initial_barrier_solve,
@@ -140,7 +142,43 @@ export
     set_obj_sense,
     print_model,
     get_small_element_value,
-    set_small_element_value
+    set_small_element_value,
+
+    # ClpSolve methods
+    set_special_option,
+    get_special_option,
+    set_presolve_type,
+    get_presolve_type,
+    set_solve_type,
+    get_solve_type,
+    get_presolve_passes,
+    get_extra_info,
+    set_infeasible_return,
+    infeasible_return,
+    do_dual,
+    set_do_dual,
+    do_singleton,
+    set_do_singleton,
+    do_doubleton,
+    set_do_doubleton,
+    do_tripleton,
+    set_do_tripleton,
+    do_tighten,
+    set_do_tighten,
+    do_forcing,
+    set_do_forcing,
+    do_implied_free,
+    set_do_implied_free,
+    do_dupcol,
+    set_do_dupcol,
+    do_duprow,
+    set_do_duprow,
+    do_singleton_column,
+    set_do_singleton_column,
+    presolve_actions,
+    set_presolve_actions,
+    substitution,
+    set_substitution
 
 import Base.pointer
 
@@ -155,6 +193,14 @@ macro clp_ccall(func, args...)
         ccall(($f,_jl_libClp), $(args...))
     end
 end
+
+macro clpsolve_ccall(func, args...)
+    f = "ClpSolve_$(func)"
+    quote
+        ccall(($f,_jl_libClp), $(args...))
+    end
+end
+
 
 # Note: we assume COIN_BIG_INDEX and COIN_BIG_DOUBLE
 # were not defined when compiling Clp (which is the
@@ -185,6 +231,25 @@ function delete_model(model::ClpModel)
     return
 end
 
+type ClpSolve
+    p::Ptr{Void}
+    function ClpSolve()
+        p = @clpsolve_ccall new Ptr{Void} ()
+        prob = new(p)
+        finalizer(prob, delete_solve)
+        return prob
+    end
+end
+
+function delete_solve(solve::ClpSolve)
+    if solve.p == C_NULL
+        return
+    end
+    @clp_ccall delete Void (Ptr{Void},) solve.p
+    solve.p = C_NULL
+    return
+end
+
 pointer(model::ClpModel) = model.p
 #}}}
 
@@ -200,6 +265,13 @@ pointer(model::ClpModel) = model.p
 function _jl__check_model(model::ClpModel)
     if model.p == C_NULL
         error("Invalid ClpModel")
+    end
+    return true
+end
+
+function _jl__check_solve(solve::ClpSolve)
+    if solve.p == C_NULL
+        error("Invalid ClpSolve")
     end
     return true
 end
@@ -903,6 +975,14 @@ function initial_solve(model::ClpModel)
     @clp_ccall initialSolve Int32 (Ptr{Void},) model.p
 end
 
+function initial_solve_with_options(model::ClpModel,solve::ClpSolve)
+    _jl__check_model(model)
+    _jl__check_solve(solve)
+    @clp_ccall initialSolveWithOptions Int32 (Ptr{Void},Ptr{Void}) model.p solve.p
+end
+
+initial_solve(model::ClpModel, solve::ClpSolve) = initial_solve_with_options(model,solve)
+
 # Dual initial solve.
 function initial_dual_solve(model::ClpModel)
     _jl__check_model(model)
@@ -1202,5 +1282,109 @@ function set_small_element_value(model::ClpModel,value::Float64)
     @clp_ccall setSmallElementValue Void (Ptr{Void},Float64) model.p value
 end
 
+# ClpSolve functions
+
+function set_special_option(solve::ClpSolve, which::Integer, value::Integer, extraInfo::Integer)
+    _jl__check_solve(solve)
+
+    @clpsolve_ccall setSpecialOption Void (Ptr{Void},Int32,Int32,Int32) solve.p which value extraInfo
+end
+
+function get_special_option(solve::ClpSolve, which::Integer)
+    _jl__check_solve(solve)
+
+    @clpsolve_ccall getSpecialOption Int32 (Ptr{Void},Int32) solve.p which
+end
+
+macro def_get_int_property(fname,clpname)
+    quote
+        function $(esc(fname))(solve::ClpSolve)
+            _jl__check_solve(solve)
+            @clpsolve_ccall $clpname Int32 (Ptr{Void},) solve.p
+        end
+    end
+end
+
+macro def_set_int_property(fname,clpname)
+    quote
+        function $(esc(fname))(model::ClpModel, val::Integer)
+            _jl__check_solve(solve)
+            @clpsolve_ccall $clpname Void (Ptr{Void},Int32) solve.p val
+        end
+    end
+end
+
+# 0 - presolve on
+# 1 - presolve off
+# 2 - presolve number
+# 3 - presolve number cost
+function set_presolve_type(solve::ClpSolve, value::Integer)
+    _jl__check_solve(solve)
+
+    @clpsolve_ccall setPresolveType Void (Ptr{Void},Int32,Int32) solve.p value -1
+end
+
+@def_get_int_property get_presolve_type getPresolveType
+
+# 0 - dual simplex
+# 1 - primal simplex
+# 2 - primal or sprint
+# 3 - barrier
+# 4 - barrier no crossover
+# 5 - automatic
+function set_solve_type(solve::ClpSolve, value::Integer)
+    _jl__check_solve(solve)
+
+    @clpsolve_ccall setSolveType Void (Ptr{Void},Int32,Int32) solve.p value -1
+end
+
+@def_get_int_property get_solve_type getSolveType
+
+@def_get_int_property get_presolve_passes getPresolvePasses
+
+function get_extra_info(solve::ClpSolve, which::Integer)
+    _jl__check_solve(solve)
+
+    @clpsolve_ccall getExtraInfo Int32 (Ptr{Void},Int32) solve.p which
+end
+
+@def_set_int_property set_infeasible_return setInfeasibleReturn
+@def_get_int_property infeasible_return infeasibleReturn
+
+@def_get_int_property do_dual doDual
+@def_set_int_property set_do_dual setDoDual
+
+@def_get_int_property do_singleton doSingleton
+@def_set_int_property set_do_singleton setDoSingleton
+
+@def_get_int_property do_doubleton doDoubleton
+@def_set_int_property set_do_doubleton setDoDoubleton
+
+@def_get_int_property do_tripleton doTripleton
+@def_set_int_property set_do_tripleton setDoTripleton
+
+@def_get_int_property do_tighten doTighten
+@def_set_int_property set_do_tighten setDoTighten
+
+@def_get_int_property do_forcing doForcing
+@def_set_int_property set_do_forcing setDoForcing
+
+@def_get_int_property do_implied_free doImpliedFree
+@def_set_int_property set_do_implied_free setDoImpliedFree
+
+@def_get_int_property do_dupcol doDupcol
+@def_set_int_property set_do_dupcol setDoDupcol
+
+@def_get_int_property do_duprow doDuprow
+@def_set_int_property set_do_duprow setDoDuprow
+
+@def_get_int_property do_singleton_column doSingletonColumn
+@def_set_int_property set_do_singleton_column setDoSingletonColumn
+
+@def_get_int_property presolve_actions presolveActions
+@def_set_int_property set_presolve_actions setPresolveActions
+
+@def_get_int_property substitution substitution
+@def_set_int_property set_substitution setSubstitution
 
 end # module
