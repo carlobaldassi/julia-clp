@@ -245,7 +245,7 @@ function delete_solve(solve::ClpSolve)
     if solve.p == C_NULL
         return
     end
-    @clp_ccall delete Void (Ptr{Void},) solve.p
+    @clpsolve_ccall delete Void (Ptr{Void},) solve.p
     solve.p = C_NULL
     return
 end
