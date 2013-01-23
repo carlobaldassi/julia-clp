@@ -13,6 +13,7 @@ export
     ClpSolve,
 
     # Methods
+    linprog,
     load_problem,
     load_quadratic_objective,
     read_mps,
