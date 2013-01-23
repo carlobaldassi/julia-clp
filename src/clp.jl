@@ -183,6 +183,63 @@ export
 import Base.pointer
 
 
+## High-level interface
+#{{{
+
+# (z, x, flag) = linprog(f, A, rowlb, rowub, collb, colub)
+# Solves: 
+#   z = min_{x} (f' * x)
+#
+# where the vector x is subject to these constraints:
+#
+#   rowlb <= A * x <= rowub
+#   lb <= x <= ub
+#
+# The return flag is 0 in case of success, and follows
+# the Clp library convention otherwise. (see Clp.status() function)
+# The following arguments may be nothing or [], in which case 
+# the default values are vectors of:
+# rowlb -- -Inf
+# rowub -- Inf
+# collb -- 0
+# colub -- Inf
+
+function linprog(f, A, rowlb, rowub, collb, colub)
+    c = ClpModel()
+    load_problem(c,A,collb,colub,f,rowlb,rowub)
+    set_log_level(c,0)
+    initial_solve(c)
+    stat = status(c)
+    if stat != 0
+        return (nothing, nothing, stat)
+    else
+        return (get_obj_value(c),get_col_solution(c),stat)
+    end
+end
+
+
+# (z, x, flag) = linprog(f, A, b, Aeq, beq, lb, ub)
+# Solves: 
+#   z = min_{x} (f' * x)
+#
+# where the vector x is subject to these constraints:
+#
+#   A * x <= b
+#   Aeq * x == beq
+#   lb <= x <= ub
+#
+# The return flag is 0 in case of success, and follows
+# the Clp library convention otherwise. (see Clp.status() function) 
+
+function linprog(f, A, b, Aeq, beq, lb, ub)
+    rowub = [b;beq]
+    rowlb = copy(rowub)
+    rowlb[1:length(b)] = -Inf
+    return linprog(f, [A;Aeq], rowlb, rowub,lb,ub)
+end
+
+#}}}
+
 ## Shared library interface setup
 #{{{
 const _jl_libClp = "libClp"
@@ -306,6 +363,16 @@ end
 ## CLP functions
 #{{{
 
+# inspired by GLPK interface
+typealias VecOrNothing Union(Vector,Nothing)
+function vec_or_null{T}(::Type{T}, a::VecOrNothing)
+    if isequal(a, nothing) || isa(a, Array{None})
+        return C_NULL
+    else # todo: helpful message if convert fails
+        return convert(Vector{T},a)
+    end
+end
+
 # Load model - loads some stuff and initializes others
 # Loads a problem (the constraints on the
 # rows are given by lower and upper bounds). If a pointer is NULL then the
@@ -322,24 +389,24 @@ end
 function load_problem (model::ClpModel,  num_cols::Integer, num_rows::Integer,
         start::Vector{CoinBigIndex}, index::Vector{Int32},
         value::Vector{Float64},
-        col_lb::Vector{Float64}, col_ub::Vector{Float64},
-        obj::Vector{Float64},
-        row_lb::Vector{Float64}, row_ub::Vector{Float64})
+        col_lb::VecOrNothing, col_ub::VecOrNothing,
+        obj::VecOrNothing,
+        row_lb::VecOrNothing, row_ub::VecOrNothing)
     _jl__check_model(model)
-    # TODO: allow empty arguments according to documentation
     @clp_ccall loadProblem Void (Ptr{Void},Int32,Int32,Ptr{CoinBigIndex},Ptr{Int32},
-    Ptr{Float64},Ptr{Float64},Ptr{Float64},Ptr{Float64},Ptr{Float64},Ptr{Float64}) model.p num_cols num_rows start index value col_lb col_ub obj row_lb row_ub
-    return
+    Ptr{Float64},Ptr{Float64},Ptr{Float64},Ptr{Float64},Ptr{Float64},Ptr{Float64}) model.p num_cols num_rows start index value vec_or_null(Float64,col_lb) vec_or_null(Float64,col_ub) vec_or_null(Float64,obj) vec_or_null(Float64,row_lb) vec_or_null(Float64,row_ub)
 end
 
-function load_problem (model::ClpModel,  constraint_matrix::SparseMatrixCSC{Float64,Int32}, 
-    col_lb::Vector{Float64}, col_ub::Vector{Float64}, 
-    obj::Vector{Float64}, row_lb::Vector{Float64},
-    row_ub::Vector{Float64})
+function load_problem (model::ClpModel,  constraint_matrix::AbstractMatrix{Float64}, 
+    col_lb::VecOrNothing, col_ub::VecOrNothing, 
+    obj::VecOrNothing, row_lb::VecOrNothing,
+    row_ub::VecOrNothing)
+    mat = convert(SparseMatrixCSC{Float64,Int32},convert(SparseMatrixCSC,constraint_matrix))
     # We need to convert to zero-based, but
     # TODO: don't make extra copies of arrays
-    load_problem(model,constraint_matrix.n, constraint_matrix.m,constraint_matrix.colptr-int32(1),
-        constraint_matrix.rowval-int32(1),constraint_matrix.nzval,
+    # TODO: check dimensions match
+    load_problem(model,mat.n, mat.m,mat.colptr-int32(1),
+        mat.rowval-int32(1),mat.nzval,
         col_lb,col_ub,obj,row_lb,row_ub)
 end
 
